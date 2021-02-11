@@ -103,10 +103,14 @@ cls_sel_i <- c("rt.uni",cls_sel)
 fp_can_sel <- fp_can_by_route %>% select(all_of(cls_sel_i)) %>% 
   filter(rt.uni %in% rts_inc) %>% na.exclude()
 
+cls_sel_ch = c("rt.uni",paste0("dif_mean_",buf_sel))
+fp_ch_sel <- fp_ch_route %>% select(all_of(cls_sel_ch)) %>% 
+  filter(rt.uni %in% rts_inc) %>% na.exclude()
 
-
+fp_can_sel = inner_join(fp_can_sel,fp_ch_sel)
 rts_w_preds <- unique(fp_can_sel$rt.uni)
 
+cls_sel = c(cls_sel,cls_sel_ch[2])
 
 # filter out routes with no predictor data --------------------------------
 
@@ -192,8 +196,8 @@ model = stan_model(file=mod.file)
 stanfit <- sampling(model,
                     data=stan_data,
                     verbose=TRUE, refresh=50,
-                    chains=4, iter=1500,
-                    warmup=1000,
+                    chains=4, iter=2000,
+                    warmup=1500,
                     cores = 4,
                     pars = parms,
                     control = list(adapt_delta = 0.99,

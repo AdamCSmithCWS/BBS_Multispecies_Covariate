@@ -11,7 +11,7 @@ int<lower=0> n;//number of slope estimates
 int<lower=0> nspecies;//number of species 
 int<lower=0> nroutes;//number of routes 
 int<lower=0> ncovs;//number of route-level covariates 
-int<lower=1>  nB; //expected number of non-zero effects
+real  nB; //expected number of non-zero effects
  
 
 real slopes[n];//vector of slope estimates
@@ -70,13 +70,13 @@ vector[ncovs] B;
     real tau = tau0 * tau_tilde; // tau ~ cauchy(0, tau0)
 
     // c2 ~ inv_gamma(half_slab_df, half_slab_df * slab_scale2)
-    // Implies that marginally beta ~ student_t(slab_df, 0, slab_scale)
+    // Implies that marginally B ~ student_t(slab_df, 0, slab_scale)
     real c2 = slab_scale2 * c2_tilde;
 
     vector[ncovs] lambda_tilde =
       sqrt( c2 * square(lambda) ./ (c2 + square(tau) * square(lambda)) );
 
-    // beta ~ normal(0, tau * lambda_tilde)
+    // B ~ normal(0, tau * lambda_tilde)
     B = tau * lambda_tilde .* B_tilde;
   }
 
