@@ -29,10 +29,10 @@ names(all) <- c(names(all)[-1],"geometry2")
 
 
 #drop the non-trend relevant columns
-all <- all %>% select(route,strat,b,sd,species) 
-bcr = 13
+all <- all %>% select(route,strat,b,sd,species) %>% 
+  mutate(bcr = str_extract(strat,pattern = "[:digit:]+"))
 
-all <- all %>% filter(grepl(strat,pattern = paste0("-",bcr),fixed = TRUE))
+
 # species available
 sps_all <- unique(all$species)
 
@@ -51,7 +51,7 @@ groups = c("Grassland.birds",
 
 # group loop --------------------------------------------------------------
 
-g_sel = groups[4]
+g_sel = groups[1]
 
 
 # species selection of trend data -----------------------------------------
@@ -93,7 +93,7 @@ buf_sel = buffer_sizes[5] #selecting the 4 km buffer
 # [11] "population_density"           "rail"                        
 # [13] "roads" 
 
-preds <- fp_components[1]
+preds <- fp_components[13]
 
 cls_sel <- paste(preds,buf_sel,"mean",sep = "_")
 cls_sel_i <- c("rt.uni",cls_sel)
@@ -110,7 +110,13 @@ rts_w_preds <- unique(fp_can_sel$rt.uni)
 
 dat <- dat %>% filter(route %in% rts_w_preds) %>% 
   mutate(routeF = as.integer(factor(route)),
-         speciesF = as.integer(factor(species)))
+         speciesF = as.integer(factor(species)),
+         stratF = as.integer(factor(bcr)))
+
+strata_df <- unique(dat[,c("bcr","stratF")])
+strata_df <- arrange(strata_df,stratF)
+nstrata <- max(strata_df$stratF)
+
 
 routes_df <- unique(dat[,c("route","routeF")])
 routes_df <- arrange(routes_df,routeF)
@@ -151,32 +157,39 @@ cov_nb <- as.numeric(unlist(sp_covs$pred_scale))
 npredictions <- 100
 cov_pred <- seq(min(covr),max(covr),length = npredictions)
 
+
+
 stan_data <- list(n = n,
                   nspecies = nspecies,
                   nroutes = nroutes,
                   npredictions = npredictions,
+                  nstrata = nstrata,
                   
                   slopes = dat$b,
                   sd_slopes = dat$sd,
                   species = dat$speciesF,
                   route = dat$routeF,
+                  strata = dat$stratF,
                   
                   cov_nb = cov_nb,
                   covr = covr,
                   cov_pred = cov_pred)
 
-parms = c("B",
-          "b_nb",
+parms = c("b_nb",
           "b",
+          "b_species",
+          "b_group",
           #"sdrte",
           #"rte",
           "preds",
-          "sd_b",
+          "sd_b_species",
+          "sd_b_group",
           "sps",
+          "SPS",
           "epsilon")
 
 
-mod.file = "model/One_covariate_on_slopes.stan"
+mod.file = "model/One_covariate_on_slopes_strata2.stan"
 
 ## compile model
 model = stan_model(file=mod.file)
@@ -197,8 +210,9 @@ stanfit <- sampling(model,
 
 
 
-save(list = c("stanfit","stan_data","fp_can_sel","routes_df","species_df","dat","cls_sel"),
-     file = paste0("output/",g_sel,"_",bcr,"_covariate_slope_output.RData"))
+save(list = c("stanfit","stan_data","fp_can_sel","routes_df","species_df","dat",
+              "cls_sel","strata_df"),
+     file = paste0("output/",g_sel,"_",preds,"_covariate_slope_output.RData"))
 
 
 
@@ -209,7 +223,7 @@ launch_shinystan(stanfit)
 
 
 
-load(paste0("output/",g_sel,"_",bcr,"_covariate_slope_output.RData"))
+load(paste0("output/",g_sel,"_covariate_slope_output.RData"))
 
 
 
@@ -222,14 +236,37 @@ load(paste0("output/",g_sel,"_",bcr,"_covariate_slope_output.RData"))
 rescale <- sd(fp_can_sel[,cls_sel])
 recenter <- mean(fp_can_sel[,cls_sel])
 
-B_samp <- spread_draws(stanfit,B) %>% 
-  mutate(B = B/rescale)
+b_species_samp <- spread_draws(stanfit,b_species[speciesF,stratF]) %>% 
+  mutate(b_species = b_species/rescale) %>% 
+  left_join(.,species_df,by = "speciesF") %>%
+  left_join(.,strata_df,by = "stratF") %>%
+  ungroup() %>% 
+  group_by(species,bcr) %>% 
+  summarise(mean = mean(b_species),
+            lci = quantile(b_species,0.025),
+            uci = quantile(b_species,0.975))
 
-b_samp <- spread_draws(stanfit,b[speciesF])  %>% 
+b_species_plot <- ggplot(data = b_species_samp,aes(x = species,y = mean))+
+  geom_point()+
+  geom_errorbar(aes(ymin = lci,ymax = uci),alpha = 0.2, width = 0)+
+  geom_abline(intercept = 0,slope = 0)+
+  coord_flip()+
+  facet_wrap(~bcr,nrow = 5,ncol = 3)
+
+print(b_species_plot)  
+
+
+
+b_group_samp <- spread_draws(stanfit,b_group[stratF,speciesF]) %>% 
+  mutate(b_group = b_group/rescale)
+
+
+b_samp <- spread_draws(stanfit,b[stratF,speciesF])  %>% 
   mutate(b = b/rescale) %>% 
   left_join(.,species_df,by = "speciesF") %>%
+  left_join(.,strata_df,by = "stratF") %>%
   ungroup() %>% 
-  group_by(species) %>% 
+  group_by(species,bcr) %>% 
   summarise(mean = mean(b),
          lci = quantile(b,0.025),
          uci = quantile(b,0.975))
@@ -238,7 +275,8 @@ b_plot <- ggplot(data = b_samp,aes(x = species,y = mean))+
   geom_point()+
   geom_errorbar(aes(ymin = lci,ymax = uci),alpha = 0.2, width = 0)+
   geom_abline(intercept = 0,slope = 0)+
-  coord_flip()
+  coord_flip()+
+  facet_wrap(~bcr,nrow = 5,ncol = 3)
   
 print(b_plot)  
 

@@ -84,7 +84,7 @@ rts_inc = unique(dat$route)
 load("data/compiled_footprint_data.RData")
 
 
-buf_sel = buffer_sizes[5] #selecting the 4 km buffer
+buf_sel = buffer_sizes[2] #selecting the 4 km buffer
 
 # fp_components
 # [1] "cumulative"                   "built"                       
@@ -95,7 +95,7 @@ buf_sel = buffer_sizes[5] #selecting the 4 km buffer
 # [11] "population_density"           "rail"                        
 # [13] "roads" 
 
-preds <- fp_components[c(1,2,3,8,9,10,13)]
+preds <- fp_components[c(1)]
 
 cls_sel <- paste(preds,buf_sel,"mean",sep = "_")
 cls_sel_i <- c("rt.uni",cls_sel)
@@ -175,7 +175,7 @@ stan_data <- list(n = n,
                   
                   cov_nb = cov_nb,
                   covr = covr,
-                  nB = 3)## nB = expected number of non-zero effects
+                  nB = 1)## nB = expected number of non-zero effects
 
 parms = c("B",
           "b_nb",
@@ -218,4 +218,6 @@ launch_shinystan(stanfit)
 
 
 
+
+load(paste0("output/",g_sel,"_covariate_slope_output.RData"))
 
